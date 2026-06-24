@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv
+# (keep uv.lock tracked)
+
+# 环境与密钥
+.env
+.env.local
+
+# 日志
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+
+.claude/
+
