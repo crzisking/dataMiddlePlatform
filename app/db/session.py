@@ -1,4 +1,10 @@
-"""PostgreSQL 异步会话（psycopg3 + SQLAlchemy 2.0）。"""
+"""连接 PostgreSQL 的"基础管道"：连接池 + 会话工厂 + 获取会话的方法。
+
+三个概念别混(常见误区)：
+- engine = 连接池，管理一批到数据库的真实连接，全项目建一个、共享。
+- session = 一次操作的"工作台/购物车"，临时从池子借一条连接来用，用完还回去。
+- async_session_factory = "发会话的窗口"，要操作数据库就找它领一个 session。
+"""
 
 from collections.abc import AsyncGenerator
 
@@ -10,23 +16,30 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-# engine 全局只建一个：内部维护连接池，整个应用共享，切勿每次请求新建。
+# 连接池。全局只建这一个，整个应用共用——千万不要每次请求都新建(建连接很贵)。
 engine = create_async_engine(
     settings.pg_dsn,
-    echo=settings.app_debug,  # 开发时打印 SQL 便于调试；生产(debug=False)关闭以免日志噪音
-    pool_pre_ping=True,  # 取连接前先 ping，自动剔除被 DB/网络断掉的死连接，避免偶发报错
+    # echo=True 时会把执行的 SQL 打到日志，方便开发调试；生产关掉以免日志太吵
+    echo=settings.app_debug,
+    # 取连接前先 ping 一下，自动剔除已经被数据库/网络断开的"死连接"，避免偶发报错
+    pool_pre_ping=True,
 )
 
-# 会话工厂：每次请求用它产出一个独立 session。
+# 会话工厂：调用它(async_session_factory())就产出一个新的 session。
 async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    # 提交后不过期对象：否则访问已提交对象的属性会触发额外查询，异步下还可能在响应阶段报错。
+    # expire_on_commit=False：提交(commit)之后，已经查出来的对象仍然能直接读属性。
+    # 否则一提交对象就"过期"，再读属性会触发额外查询，异步场景下还可能在返回响应时报错。
     expire_on_commit=False,
 )
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI 依赖：每个请求注入一个独立会话，请求结束(async with 退出)自动关闭归还连接池。"""
+    """给 FastAPI 接口用的"依赖"：每个请求自动领一个独立会话，
+    请求处理完(退出 async with)自动关闭、把连接还回池子。
+
+    接口里这样用：session: AsyncSession = Depends(get_session)
+    """
     async with async_session_factory() as session:
         yield session

@@ -47,6 +47,8 @@ uv run pytest -q
 - 对话（一次性）`POST http://127.0.0.1:8000/api/v1/chat`，body: `{"message": "...", "conversation_id": "...", "history": [], "model": "qwen-plus"}`
 - 对话（流式 SSE）`POST http://127.0.0.1:8000/api/v1/chat/stream`，同样 body；返回 `text/event-stream`，逐 token `data:`，末尾 `event: done`
 - 文档上传 `POST http://127.0.0.1:8000/api/v1/documents`（multipart）：字段 `file`（文件）+ `doc_type`（类型）+ `biz_tags`（可选 JSON）
+- 文档列表 `GET http://127.0.0.1:8000/api/v1/documents`：分页 + 按 `doc_type`/`status`/`only_active` 过滤
+- 文档详情/状态 `GET http://127.0.0.1:8000/api/v1/documents/{id}`：轮询入库进度
 
 ## 统一错误响应
 
@@ -80,6 +82,6 @@ alembic/               数据库迁移
 tests/                 冒烟测试（health / meta / 错误格式）
 ```
 
-> 进度：P1 骨架完成；P2(RAG 入库)——①-④ 完成（上传→校验→存MinIO→登记→投递→
-> worker 解析/切割/向量化/入库，全链路打通），剩 ⑤ 回查/列表接口。
-> 详见 [项目选型/工作清单.md](项目选型/工作清单.md)。
+> 进度：P1 骨架、P2(RAG 入库) 全部完成——上传→校验→存MinIO→登记→投递→
+> worker 解析/切割/向量化/入库 全链路打通，并提供文档列表/状态回查接口。
+> 下一步 P3(切割可配置 + 中文混合检索)。详见 [项目选型/工作清单.md](项目选型/工作清单.md)。

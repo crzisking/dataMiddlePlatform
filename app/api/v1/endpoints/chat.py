@@ -1,9 +1,12 @@
-"""对话接口：调用多轮工具调用 Agent。
+"""对话接口：把用户的问题交给多轮对话 Agent，返回回答。
 
-对话记忆采用方案 B（自建会话/消息表为唯一真相，Agent 无状态）：
-- 桌面端：直接在 history 里带上本地组装的历史。
-- 网页端：传 conversation_id，由服务端从 PG 会话/消息表取历史填充（P4 实现）。
-- 流式输出（SSE）留待 P4，这里先做一次性返回。
+提供两个接口：
+- POST /chat        一次性返回完整答案(等 Agent 全跑完)。
+- POST /chat/stream 流式返回(SSE)，一个字一个字推给前端，做打字机效果。
+
+关于历史(方案 B：自建会话表为准，Agent 无状态)：
+- 桌面端：直接把本地的历史放在请求的 history 里带上来。
+- 网页端：带上 conversation_id，由服务端从数据库取历史(P4 实现)。
 """
 
 from typing import Literal
@@ -20,20 +23,20 @@ router = APIRouter()
 
 
 class ChatTurn(BaseModel):
-    """一轮历史消息（前端/客户端传入的最简结构）。"""
+    """一条历史消息。role 标明是用户说的还是助手说的。"""
 
     role: Literal["user", "assistant"]
     content: str
 
 
 class ChatRequest(BaseModel):
-    # Field(...) 里的 ... 表示必填；description 会自动出现在 /docs 接口文档里。
+    # Field 的第一个参数 ... 表示"必填"；description 会显示在 /docs 接口文档里。
     message: str = Field(..., description="用户本轮输入")
-    # 会话 ID：网页端据此让服务端从 PG 取历史（P4）；也用于日志/追踪。
+    # 会话 ID：同一个会话用同一个 id。网页端将来靠它从数据库取历史；也方便日志追踪。
     conversation_id: str = Field("default", description="会话 ID")
-    # 历史消息：桌面端在此带上本地历史；网页端可不传（服务端按 conversation_id 取）。
+    # 历史消息：桌面端把本地历史放这；网页端可不传(以后由服务端按 conversation_id 取)。
     history: list[ChatTurn] = Field(default_factory=list, description="本会话历史消息")
-    # 模型由用户在对话中自选；不传则后端用默认模型。
+    # 用哪个模型由用户选；不传就用默认模型。
     model: str | None = Field(None, description="所选模型，不传用默认")
 
 
@@ -44,7 +47,9 @@ class ChatResponse(BaseModel):
 
 
 def _to_messages(turns: list[ChatTurn]) -> list[AnyMessage]:
-    """把接口的 {role, content} 历史转成 LangChain 消息对象。"""
+    """把接口收到的 {role, content} 历史，转成 Agent 能用的 LangChain 消息对象。
+    用户说的 → HumanMessage，助手说的 → AIMessage。
+    """
     return [
         HumanMessage(content=t.content)
         if t.role == "user"
@@ -55,9 +60,9 @@ def _to_messages(turns: list[ChatTurn]) -> list[AnyMessage]:
 
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    """一次性返回：等 Agent 全部跑完一把返回。供不需要流式的场景（如批处理、桌面端简单调用）。"""
+    """一次性返回：等 Agent 完全跑完，一把返回答案。适合不需要打字机效果的场景。"""
     model = req.model or DEFAULT_MODEL
-    # TODO(P4): 网页端在此按 conversation_id 从 PG 会话/消息表加载历史，合并进 history。
+    # TODO(P4): 网页端在这里按 conversation_id 从数据库把历史读出来，合并进 history。
     answer = await run_agent(
         message=req.message,
         model=model,
@@ -72,22 +77,25 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 @router.post("/stream")
 async def chat_stream(req: ChatRequest) -> EventSourceResponse:
-    """流式返回（SSE）：逐 token 推送最终答案，前端边收边显示。
+    """流式返回(SSE)：把答案逐字推给前端，边生成边显示。
 
-    事件约定：
-    - 多条 `data: <文本增量>`（默认 event，无名）
-    - 末尾一条 `event: done`，标志本轮结束
-    EventSourceResponse 会在客户端断开时自动停止生成器，避免空跑大模型。
+    返回的数据格式(SSE 约定)：
+    - 多条 `data: <文本片段>`，拼起来就是完整答案；
+    - 最后一条 `event: done` 表示这轮结束。
+    另外：用户中途关掉页面(连接断开)时，EventSourceResponse 会自动停止下面的
+    生成器，避免大模型还在后台空跑、白花钱。
     """
     model = req.model or DEFAULT_MODEL
 
     async def event_source():
+        # 每产出一个文本片段，就作为一条 SSE data 推给前端
         async for token in stream_agent(
             message=req.message,
             model=model,
             history=_to_messages(req.history),
         ):
             yield {"data": token}
+        # 结束信号
         yield {"event": "done", "data": ""}
 
     return EventSourceResponse(event_source())

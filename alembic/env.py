@@ -17,12 +17,24 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_name(name: str | None, type_: str, parent_names: dict) -> bool:
+    """只比对我们自己模型里的表，忽略其它表(比如 procrastinate 队列自己建的表)。
+
+    否则 autogenerate 会把"库里有、模型里没有"的 procrastinate 表当成
+    "要删除的表"，生成误删它们的迁移——非常危险。
+    """
+    if type_ == "table":
+        return name in target_metadata.tables
+    return True
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.pg_dsn_sync,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -39,6 +51,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            include_name=include_name,
         )
         with context.begin_transaction():
             context.run_migrations()
