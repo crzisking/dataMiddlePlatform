@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.chat import SourceOut
 from app.db.session import get_session
 from app.services.chat.history import get_messages, list_conversations
+from app.services.chat.sources import attach_download_urls
 
 router = APIRouter()
 
@@ -27,6 +29,7 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime
+    sources: list[SourceOut] = []  # 助手消息当初引用的来源(下载链接读取时现签)；用户消息为空
 
 
 @router.get("", response_model=list[ConversationOut])
@@ -45,6 +48,21 @@ async def get_conv_messages(
     conversation_id: str,
     session: AsyncSession = Depends(get_session),
 ) -> list[MessageOut]:
-    """查看某会话的全部消息(按对话顺序)。"""
+    """查看某会话的全部消息(按对话顺序)，助手消息带上当初引用的来源。
+
+    来源当初只存了文档 id+名字，这里按需重新签 MinIO 下载链接(链接限时、不存库)。
+    """
     rows = await get_messages(session, conversation_id)
-    return [MessageOut.model_validate(r) for r in rows]
+    out: list[MessageOut] = []
+    for r in rows:
+        # r.sources 是存库的 [{document_id, document_name}]（用户消息为 None）→ 现签链接
+        source_rows = await attach_download_urls(session, r.sources or [])
+        out.append(
+            MessageOut(
+                role=r.role,
+                content=r.content,
+                created_at=r.created_at,
+                sources=[SourceOut(**s) for s in source_rows],
+            )
+        )
+    return out

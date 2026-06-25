@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 进度真相源（先读这两处）
 - **`项目选型/工作清单.md`** 是进度与待办的唯一真相源（含 P0–P9 阶段状态、技术债、待讨论事项）。开工前先读它确认当前位置。
 - `项目选型/` 下文档**按主题拆分**：`中台架构.md` / `RAG系统.md` / `TextToSQL.md` 各自独立。改文档时归到对应主题，**不要跨主题混写**。
-- 当前位置：P0–P4（RAG 问答）实质完成，正在做 RAG 评测；P5 TextToSQL 未开始（需先定语义层）。
+- 当前位置：P0–P4（RAG 问答）实质完成；**P5 TextToSQL 进行中**——SQL Server 已连通(A1)、语义层表 `schema_docs` 与登记机制(B1)就绪，待 DBA 整理首个业务视图。设计见 `TextToSQL.md` 第七节。
 
 ## 常用命令
 全部经 uv。日常运维命令统一封装在 `scripts/ops.ps1`（PowerShell，纯英文，避免 cp950 乱码）。
@@ -51,7 +51,8 @@ scripts\ops.ps1 health       # 自检 API + DB
 
 - **Windows 事件循环**：`app/core/eventloop.py` 必须被 `main.py` 和 `workers/queue.py` **最先 import**——它把策略切成 `SelectorEventLoop`，否则 psycopg 异步会崩（默认 ProactorEventLoop 不兼容）。新增进程入口同样要先 import 它。
 - **Alembic 别删队列表**：procrastinate 的表也在同一个 PG 库里但不在 ORM 模型中。`alembic/env.py` 有 `include_name` 过滤只比对 `target_metadata` 里的表——**不要移除这个过滤**，否则 autogenerate 会生成 DROP procrastinate_* 的迁移。
-- **三种连接串**：`config.py` 里 `pg_dsn`（SQLAlchemy 异步，`+psycopg`）、`pg_dsn_sync`（Alembic）、`pg_conninfo`（procrastinate，原生无前缀）。给不同工具用不同串，别混。
+- **PostgreSQL 三种连接串**：`config.py` 里 `pg_dsn`（SQLAlchemy 异步，`+psycopg`）、`pg_dsn_sync`（Alembic）、`pg_conninfo`（procrastinate，原生无前缀）。给不同工具用不同串，别混。
+- **业务库 SQL Server 是另一套**（TextToSQL 用）：`pymssql` 连，配置 `mssql_*`，连接逻辑在 `services/texttosql/db.py`。**它是只读生产库 `ICAS_FPC`（192.168.20.6），绝不往里写、不建对象、不跑重查询**；不归 Alembic 管（Alembic 只管我们自己的 PG）。SQL Server 2008 必须 `MSSQL_TDS_VERSION=7.0` 才连得上（新协议跟老库 TLS 握手失败），代价是 `date`/`datetime2` 读成字符串（值正确，够用）。
 - **新建 ORM 模型**：必须在 `app/models/__init__.py` 里 import，Alembic 才扫得到。
 - **MinIO 下载链接不存库**：预签名 URL 限时 1 小时，**用时现签**（`storage/minio_client.py` 的 `presigned_get_url`），绝不把 URL 写进数据库（会过期）。
 - **上传白名单**：只收 `pdf,docx,xlsx,txt,md`。老二进制 `.doc/.xls/.wps` 解析不了，已排除——遇到要先转 docx 再入库。
@@ -89,4 +90,10 @@ scripts\ops.ps1 health       # 自检 API + DB
 ## 模型与外部服务
 - LLM：通义千问 / DeepSeek，均走 OpenAI 兼容接口（`services/llm/client.py` 按模型路由）；用户对话时自选模型，端点用白名单校验非法模型名返回 400。
 - rerank 是通义 gte-rerank-v2，走 DashScope **原生** HTTP（非 OpenAI 兼容），默认关（`RERANK_ENABLED`）。
-- 业务库（TextToSQL，P5）：SQL Server 只读，配置项 `mssql_*` 已预留但未启用。
+- 业务库（TextToSQL，P5）：SQL Server 2008 只读生产库，已连通（`mssql_*` 已启用，`pymssql` + TDS 7.0）。语义层存我们自己的 PG（`schema_docs` 表，`services/texttosql/semantic_layer.py`），视图整理好用 `scripts/register_views.py` 登记。
+
+## TextToSQL（P5）要点
+- **方针**：不喂整库给模型；建一层"业务视图"，把它们的中文说明存进 `schema_docs` 并向量化，提问时先检索相关视图再让模型写 SQL。准确率靠"视图建得好 + 检索找得准 + 样例给得对"。详见 `TextToSQL.md` 第七节。
+- **两类数据源**（`schema_docs.source_type`）：`view`（DBA 整理好的 `v_ai_` 宽视图，首选）/ `table`（建不了视图的裸表，文字描述 + 显式 JOIN 关系兜底）。
+- **大数据量护栏**：业务表常千万级，必带过滤（没带自动注入默认时间窗）、一视图只挂一张大表、聚合走预聚合表（建在我们 PG，不压生产）。
+- **会话来源（P4 修复）**：知识类问题每轮强制重新检索（系统提示词）；来源随消息存 `messages.sources`（只存 id+名，链接用时现签）；`conversation_id` 不传则服务端生成新会话并返回（不再有共享的 "default"）。

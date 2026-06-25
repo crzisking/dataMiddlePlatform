@@ -8,6 +8,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -37,6 +38,10 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(16))  # "user"=用户说的，"assistant"=AI 说的
     content: Mapped[str] = mapped_column(Text)
+    # 这条回答引用的来源文档，形如 [{"document_id": 1, "document_name": "x.docx"}, ...]。
+    # 只存 id + 名字，**不存下载链接**——MinIO 预签名 URL 限时会过期，要用时现签。
+    # 只有助手消息、且本轮真的检索了才有值；用户消息恒为空。
+    sources: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

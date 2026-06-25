@@ -32,9 +32,12 @@ async def append_turn(
     *,
     user_text: str,
     assistant_text: str,
+    sources: list[dict] | None = None,
 ) -> None:
     """把这一轮(用户问 + AI 答)写回数据库。会话不存在则顺便建一条。
 
+    sources：这轮答案引用的来源 [{document_id, document_name}, ...]，存到助手消息上，
+        供历史回看时还原。只存 id+名字、不存下载链接(链接会过期，用时现签)。没检索就为 None。
     不在这里 commit，由调用方(接口)统一提交。
     """
     conv = await session.get(Conversation, conversation_id)
@@ -45,7 +48,12 @@ async def append_turn(
 
     session.add(Message(conversation_id=conversation_id, role="user", content=user_text))
     session.add(
-        Message(conversation_id=conversation_id, role="assistant", content=assistant_text)
+        Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=assistant_text,
+            sources=sources or None,  # 空列表也存成 NULL，省得占地方
+        )
     )
 
 

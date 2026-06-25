@@ -8,6 +8,7 @@ from app.db.base import Base
 from app.models.chunk_config import ChunkConfig
 from app.models.conversation import Conversation, Message
 from app.models.document import DocStatus, Document, DocumentChunk
+from app.models.schema_doc import SchemaDoc, SourceType
 
 __all__ = [
     "Base",
@@ -17,4 +18,6 @@ __all__ = [
     "ChunkConfig",
     "Conversation",
     "Message",
+    "SchemaDoc",
+    "SourceType",
 ]
