@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-v3"
     embedding_dim: int = 1024
 
+    # —— 重排序(rerank)：混合检索后用通义 rerank 模型对候选再精排，可配开关 ——
+    rerank_enabled: bool = False  # 默认关；开了会多一次 API 调用、增加延迟，但更准
+    rerank_model: str = "gte-rerank-v2"
+    # 通义 rerank 是 DashScope 原生接口(非 OpenAI 兼容)，单独一个地址
+    dashscope_rerank_url: str = (
+        "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+    )
+
     # —— 上传限制（白名单和大小都能通过 .env 改）——
     upload_max_mb: int = 100
     # 只允许这几种"能解析出文字"的格式。注意没放 doc/xls：

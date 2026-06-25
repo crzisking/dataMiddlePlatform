@@ -16,6 +16,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -25,7 +26,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -97,9 +98,19 @@ class DocumentChunk(Base):
     )
     seq: Mapped[int] = mapped_column(Integer)  # 这块在文档里的顺序号(第几块)
     content: Mapped[str] = mapped_column(Text)  # 块的文本内容
-    # jieba 分词结果，给中文关键词检索(BM25)用。P3 才会启用，这里先把列留好
+    # jieba 分词结果(空格分隔的词)，给中文关键词检索用。入库时由代码填。
     content_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ts 是给全文检索用的"倒排索引数据"。它是"生成列"：值由数据库根据 content_tokens
+    # 自动算出来(用 simple 配置按空格切)，我们不用手动写——content_tokens 一变，它就跟着变。
+    ts: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('simple', coalesce(content_tokens, ''))", persisted=True),
+        nullable=True,
+    )
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))  # 这块的向量
+    # 父子切割时用：这一(小)块所在的(大)父块文本。检索命中小块后，把父块文本返回给
+    # 模型，让它有更全的上下文。普通切割时为空。
+    parent_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 块的元数据(文档类型、部门标签等)，检索时可按这些字段先过滤
     meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
@@ -118,4 +129,6 @@ class DocumentChunk(Base):
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        # 全文检索(关键词)专用索引：GIN，加速 ts 列的匹配
+        Index("ix_chunks_ts", "ts", postgresql_using="gin"),
     )

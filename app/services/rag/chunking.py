@@ -36,3 +36,31 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> list[str]
     )
     # 过滤掉切完后只剩空白的块
     return [c for c in splitter.split_text(text) if c.strip()]
+
+
+def chunk_documents(
+    text: str,
+    *,
+    strategy: str = "recursive",
+    chunk_size: int = 512,
+    overlap: int = 50,
+    parent_size: int = 2048,
+) -> list[tuple[str, str | None]]:
+    """按指定策略切割，返回一串 (小块文本, 父块文本) 对。
+
+    - recursive：普通递归切。每块没有父块，所以父块那一项是 None。
+    - parent_child：先把全文切成"父块"(parent_size 大)，再把每个父块切成"小块"
+      (chunk_size 小)。小块用来做向量检索(更精准)，但每个小块都记着自己所在的父块，
+      检索命中后可以把"父块"返回给模型，上下文更完整。
+    """
+    if strategy == "parent_child":
+        pairs: list[tuple[str, str | None]] = []
+        # 第一层：切成大父块(父块之间不重叠)
+        for parent in chunk_text(text, chunk_size=parent_size, overlap=0):
+            # 第二层：把每个父块再切成小块
+            for child in chunk_text(parent, chunk_size=chunk_size, overlap=overlap):
+                pairs.append((child, parent))
+        return pairs
+
+    # 默认 recursive：每块就是它自己，没有父块
+    return [(c, None) for c in chunk_text(text, chunk_size=chunk_size, overlap=overlap)]

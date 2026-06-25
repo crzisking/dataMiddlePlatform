@@ -49,6 +49,8 @@ uv run pytest -q
 - 文档上传 `POST http://127.0.0.1:8000/api/v1/documents`（multipart）：字段 `file`（文件）+ `doc_type`（类型）+ `biz_tags`（可选 JSON）
 - 文档列表 `GET http://127.0.0.1:8000/api/v1/documents`：分页 + 按 `doc_type`/`status`/`only_active` 过滤
 - 文档详情/状态 `GET http://127.0.0.1:8000/api/v1/documents/{id}`：轮询入库进度
+- 知识库检索 `POST http://127.0.0.1:8000/api/v1/search`，body: `{"query": "...", "top_k": 5, "doc_type": null, "mode": "hybrid"}`（mode: hybrid/vector/keyword）
+- 切割配置 `GET/PUT http://127.0.0.1:8000/api/v1/chunk-configs[/{doc_type}]`：每类文档配切割策略(recursive/parent_child)与参数
 
 ## 统一错误响应
 
