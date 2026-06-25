@@ -6,8 +6,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
+from app.core.config import settings
 from app.db.session import get_session
+from app.services.texttosql.db import ping as mssql_ping
 
 router = APIRouter()
 
@@ -23,3 +26,16 @@ async def health_db(session: AsyncSession = Depends(get_session)) -> dict:
     """确认能连上 PostgreSQL：跑一句最简单的 SELECT 1，能返回就说明通。"""
     await session.execute(text("SELECT 1"))
     return {"status": "ok", "db": "postgresql"}
+
+
+@router.get("/health/mssql")
+async def health_mssql() -> dict:
+    """确认能连上业务库 SQL Server（TextToSQL 用）。
+
+    没配 MSSQL_* 时不报错，只回 skipped（P5 才启用，没配是正常状态）。
+    pymssql 是同步驱动，用 run_in_threadpool 丢线程池跑，别堵事件循环。
+    """
+    if not settings.mssql_configured:
+        return {"status": "skipped", "db": "sqlserver", "detail": "未配置 MSSQL_*"}
+    await run_in_threadpool(mssql_ping)
+    return {"status": "ok", "db": "sqlserver"}

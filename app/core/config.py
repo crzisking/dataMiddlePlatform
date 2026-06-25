@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     mssql_user: str = ""
     mssql_password: str = ""
     mssql_database: str = ""
+    # 查询超时(秒)：TextToSQL 执行业务查询时的护栏之一，防止一条慢 SQL 拖垮连接。
+    mssql_timeout: int = 30
+    # TDS 协议版本。业务库是 SQL Server 2008 R2，pymssql 自带的新版 FreeTDS 用 7.1~7.4
+    # 跟它做 TLS 握手会失败(老库的 TLS 跟新 OpenSSL 谈不拢)，只有 7.0 能连上。
+    # 代价：7.0 不认 2008 的新类型(date/datetime2)，会把它们降级成字符串返回——
+    # 值是对的，对"只读结果转文本喂模型"的 TextToSQL 来说够用。
+    # 若将来换成 pyodbc + ODBC Driver 17，这个配置就不再用得上。
+    mssql_tds_version: str = "7.0"
 
     # —— MinIO：存上传的原始文件 ——
     minio_endpoint: str = "192.168.120.198:9000"
@@ -110,6 +118,12 @@ class Settings(BaseSettings):
             f"postgresql+psycopg://{self.pg_user}:{self.pg_password}"
             f"@{self.pg_host}:{self.pg_port}/{self.pg_database}"
         )
+
+    @property
+    def mssql_configured(self) -> bool:
+        """SQL Server 是否已配齐连接信息。没配齐时 TextToSQL 相关功能直接跳过，
+        不去尝试连接（避免一堆连不上的报错）。host + 库名都填了才算配好。"""
+        return bool(self.mssql_host and self.mssql_database)
 
     @property
     def pg_conninfo(self) -> str:

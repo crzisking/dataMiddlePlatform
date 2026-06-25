@@ -10,7 +10,8 @@
 #   migrate                  Upgrade DB schema to latest
 #   makemigration "<msg>"    Generate a migration script
 #   ingest <folder> [type]   Batch-ingest a folder of docs (type default: tongyong)
-#   health                   Check API + DB
+#   health                   Check API + DB (PostgreSQL + SQL Server)
+#   mssqlcheck               Test SQL Server connection directly (no API needed)
 #   help                     Show this help
 
 $root = Split-Path $PSScriptRoot -Parent
@@ -47,13 +48,19 @@ switch ($cmd) {
             uv run python scripts/batch_ingest.py $folder
         }
     }
+    "mssqlcheck" {
+        uv run python scripts/check_mssql.py
+    }
     "health" {
         Write-Host "=== API ==="
         try { (Invoke-WebRequest "http://127.0.0.1:8000/api/v1/health" -UseBasicParsing).Content }
         catch { "API not running? try: ops.ps1 api" }
-        Write-Host "`n=== DB ==="
+        Write-Host "`n=== DB (PostgreSQL) ==="
         try { (Invoke-WebRequest "http://127.0.0.1:8000/api/v1/health/db" -UseBasicParsing).Content }
         catch { "DB unreachable, check .env / PG" }
+        Write-Host "`n=== Business DB (SQL Server) ==="
+        try { (Invoke-WebRequest "http://127.0.0.1:8000/api/v1/health/mssql" -UseBasicParsing).Content }
+        catch { "SQL Server unreachable, check .env / MSSQL_*" }
     }
     default {
         Write-Host "ops.ps1 commands: api | worker | migrate | makemigration | ingest | health"
@@ -62,7 +69,8 @@ switch ($cmd) {
         Write-Host "  migrate                 upgrade DB to latest"
         Write-Host '  makemigration "msg"     generate a migration'
         Write-Host "  ingest <folder> [type]  batch ingest docs"
-        Write-Host "  health                  check API + DB"
+        Write-Host "  health                  check API + DB (PG + SQL Server)"
+        Write-Host "  mssqlcheck              test SQL Server connection (no API needed)"
         Write-Host "Note: uploading new docs needs api + worker both running (or use ingest, no worker needed)."
     }
 }

@@ -7,8 +7,6 @@
 failed，并把错误原因存进 error 字段。
 """
 
-import asyncio
-
 from sqlalchemy import delete
 from starlette.concurrency import run_in_threadpool
 
@@ -52,10 +50,10 @@ async def ingest(document_id: int) -> None:
             doc.status = DocStatus.parsing
             await session.commit()
 
-            # 取原件 + 解析。这两步是同步阻塞的(网络IO/CPU)，丢线程池跑，
-            # 不阻塞 worker 的事件循环。
+            # 取原件 + 解析。这两步是同步阻塞的(网络IO/CPU)，统一用 run_in_threadpool
+            # 丢线程池跑，不阻塞 worker 的事件循环。
             data = await run_in_threadpool(_download, doc.object_key)
-            text = await asyncio.to_thread(extract_text, doc.file_ext, data)
+            text = await run_in_threadpool(extract_text, doc.file_ext, data)
 
             # 按这篇文档的类型读取切割配置(没配过用默认)，再按配置切割。
             # pairs 是一串 (小块, 父块)；普通策略父块为 None。

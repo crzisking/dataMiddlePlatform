@@ -4,8 +4,9 @@
 也超模型输入；块太小又会丢上下文。所以切成大小适中、且尽量在自然边界
 （段落/句子）断开的小块。
 
-当前是 P2-4 的"递归切割兜底"——所有文档类型都用这一套。
-按文档类型分策略、可配置那部分，是 P3 才做的。
+支持两种切法（由调用方按文档类型从 chunk_configs 表取配置后传入，见 chunk_documents）：
+- recursive：普通递归切，每块独立，无父块。
+- parent_child：父子切，小块用于检索、命中后把所在的大父块返回给模型，上下文更全。
 """
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter

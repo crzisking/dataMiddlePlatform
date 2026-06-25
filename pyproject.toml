@@ -33,6 +33,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "langchain-text-splitters>=1.1.2",
     "jieba>=0.42.1",
+    "pymssql>=2.3.13",
 ]
 
 [dependency-groups]
@@ -47,6 +48,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# alembic 的迁移脚本是 autogenerate 生成的机器代码，不手工维护，不纳入 lint。
+# 注意只排除 versions/(生成物)，alembic/env.py 是手写的、仍要检查。
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]

@@ -14,12 +14,14 @@ import asyncio
 import sys
 from pathlib import Path
 
-import app.core.eventloop  # noqa: F401  先设置 Windows 事件循环
+# eventloop 必须在 app.db.session(会建异步引擎)之前设置好 Windows 事件循环策略。
+# plain `import` 会被排在所有 `from app...` 之前，顺序天然满足，无需手动调位置。
+import app.core.eventloop  # noqa: F401
 from app.core.config import settings
 from app.db.session import async_session_factory
+from app.models.document import Document
 from app.services.rag.documents import create_document_version
 from app.services.rag.ingest import ingest
-from app.models.document import Document  # noqa: E402  (放最后避免与 eventloop 顺序冲突)
 
 
 async def ingest_one(path: Path, doc_type: str) -> tuple[str, str]:
@@ -34,7 +36,10 @@ async def ingest_one(path: Path, doc_type: str) -> tuple[str, str]:
     await ingest(doc_id)  # 解析→切割→embedding→写chunks→更新状态
     async with async_session_factory() as session:
         d = await session.get(Document, doc_id)
-        return path.name, f"{d.status} (chunks={d.chunk_count})" + (f" err={d.error}" if d.error else "")
+        result = f"{d.status} (chunks={d.chunk_count})"
+        if d.error:
+            result += f" err={d.error}"
+        return path.name, result
 
 
 async def main() -> None:
@@ -45,8 +50,12 @@ async def main() -> None:
 
     folder = Path(args.folder)
     allowed = settings.allowed_exts
-    files = [p for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lstrip(".").lower() in allowed]
-    skipped = [p.name for p in folder.iterdir() if p.is_file() and p.suffix.lstrip(".").lower() not in allowed]
+
+    def _ext_ok(p: Path) -> bool:
+        return p.is_file() and p.suffix.lstrip(".").lower() in allowed
+
+    files = [p for p in sorted(folder.iterdir()) if _ext_ok(p)]
+    skipped = [p.name for p in folder.iterdir() if p.is_file() and not _ext_ok(p)]
 
     print(f"待入库: {len(files)} 个；跳过(格式不支持): {len(skipped)} 个")
     ok = 0
