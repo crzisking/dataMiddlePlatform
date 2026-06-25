@@ -1,20 +1,23 @@
 """检索：给一句话，从知识库里找出最相关的若干文本块(chunk)。
 
-原理：把用户的查询也转成向量，再去 document_chunks 表里比"谁的向量离它最近"
-(用余弦距离)，最近的几块就是最相关的内容。这是 RAG 回答问题的第一步——
-先把相关资料找出来，后面(P4)再交给大模型据此作答。
-
-当前是 P3-① 纯向量检索。中文关键词(BM25)和混合检索是 P3-②③。
+这是 RAG 回答问题的第一步——先把相关资料找出来，后面(P4)再交给大模型据此作答。
+提供三种检索：
+- search()         向量检索：按"意思相近"找(余弦距离)。
+- keyword_search() 关键词检索：按"词面匹配"找(PG 全文检索)，擅长精确词。
+- hybrid_search()  混合检索：上面两路融合 + 可选 rerank 精排(默认入口)。
 """
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.document import Document, DocumentChunk
 from app.services.rag.embedding import embed_texts
 from app.services.rag.rerank import rerank
 from app.services.rag.tokenize import to_tsquery_or
+
+logger = get_logger(__name__)
 
 
 async def search(
@@ -134,6 +137,22 @@ def _rrf_fuse(result_lists: list[list[dict]], rrf_k: int = 60) -> list[dict]:
     return fused
 
 
+def _dedupe_by_content(hits: list[dict]) -> list[dict]:
+    """按返回内容去重，保留排名靠前的那条。
+
+    主要为父子切割：同一个父块常被多个小块命中，不去重的话结果里会重复出现
+    同一段父块，白占名额。这里把内容相同的只留第一条(也就是排名最高的那条)。
+    """
+    seen: set[str] = set()
+    out = []
+    for hit in hits:
+        if hit["content"] in seen:
+            continue
+        seen.add(hit["content"])
+        out.append(hit)
+    return out
+
+
 async def hybrid_search(
     session: AsyncSession,
     query: str,
@@ -155,16 +174,23 @@ async def hybrid_search(
     vector_hits = await search(session, query, top_k=candidate_k, doc_type=doc_type)
     keyword_hits = await keyword_search(session, query, top_k=candidate_k, doc_type=doc_type)
 
-    fused = _rrf_fuse([vector_hits, keyword_hits])
+    # 融合两路，并去掉重复(主要是父子切割时同一父块被多个小块命中的情况)
+    fused = _dedupe_by_content(_rrf_fuse([vector_hits, keyword_hits]))
     if not fused:
         return []
 
     if not use_rerank:
         return fused[:top_k]
 
-    # 开了 rerank：把融合后的候选交给 rerank 模型精排，再取 top_k
+    # 开了 rerank：把融合后的候选交给 rerank 模型精排，再取 top_k。
+    # rerank 是可选增强，万一调用失败(超时/限流等)，回退到融合结果，别让整个检索挂掉。
     candidates = fused[:candidate_k]
-    order = await rerank(query, [h["content"] for h in candidates], top_n=top_k)
+    try:
+        order = await rerank(query, [h["content"] for h in candidates], top_n=top_k)
+    except Exception:
+        logger.warning("rerank 调用失败，回退到融合结果", exc_info=True)
+        return fused[:top_k]
+
     reranked = []
     for original_index, score in order:
         hit = dict(candidates[original_index])

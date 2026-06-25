@@ -15,6 +15,12 @@ from procrastinate import App, PsycopgConnector
 
 import app.core.eventloop  # noqa: F401  worker 进程也要先设置 Windows 事件循环策略
 from app.core.config import settings
+from app.core.logging import setup_logging
+
+# Worker 进程的入口就是本模块(procrastinate --app 指向这里)，在此配置日志 → logs/worker.log。
+# 注意：API 进程也会 import 本模块，但 main.py 随后会再调 setup_logging("api") 覆盖，
+# 所以两个进程各自落到 api.log / worker.log，互不影响。
+setup_logging("worker")
 
 # App 是整个队列的入口。
 # - connector：告诉它队列存在哪个 PostgreSQL(用原生连接串)。

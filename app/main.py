@@ -18,7 +18,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
 from app.workers.queue import app as task_app
 
-setup_logging()
+setup_logging("api")  # API 进程日志 → logs/api.log
 logger = get_logger(__name__)
 
 

@@ -4,6 +4,7 @@
 用一个 key(类似文件路径)来定位，文件分门别类放在 bucket(桶)里。
 """
 
+from datetime import timedelta
 from functools import lru_cache
 
 from minio import Minio
@@ -33,3 +34,14 @@ def ensure_bucket(bucket: str | None = None) -> str:
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
     return bucket
+
+
+def presigned_get_url(object_key: str, expires_seconds: int = 3600) -> str:
+    """生成一个带签名、限时有效的下载链接，点开就能下原件。
+
+    预签名 URL 把"临时授权"编进链接里，前端不用拿密钥也能直接下载；默认 1 小时过期。
+    这一步只是本地算签名、不发网络请求，所以同步调用也很快。
+    """
+    return get_minio().presigned_get_object(
+        settings.minio_bucket, object_key, expires=timedelta(seconds=expires_seconds)
+    )

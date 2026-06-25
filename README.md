@@ -39,18 +39,32 @@ uv run procrastinate --app=app.workers.queue.app worker
 uv run pytest -q
 ```
 
+## 运维脚本（日常命令一处管）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ops.ps1 <命令>
+#   api                      启动 API(开发, 热重载)
+#   worker                   启动后台 worker(解析入库)
+#   migrate                  数据库迁移到最新
+#   makemigration "说明"     生成迁移脚本
+#   ingest <文件夹> [类型]   批量入库(类型默认 通用)
+#   health                   检查 API + 数据库
+```
+批量入库脚本：`uv run python scripts/batch_ingest.py <文件夹> --doc-type <类型>`
+
 启动后：
 - 接口文档 `http://127.0.0.1:8000/docs`
 - 健康检查 `http://127.0.0.1:8000/api/v1/health`
 - 数据库连通性 `http://127.0.0.1:8000/api/v1/health/db`
 - 可用模型 `http://127.0.0.1:8000/api/v1/meta/models`
-- 对话（一次性）`POST http://127.0.0.1:8000/api/v1/chat`，body: `{"message": "...", "conversation_id": "...", "history": [], "model": "qwen-plus"}`
+- 对话（一次性）`POST http://127.0.0.1:8000/api/v1/chat`，body: `{"message": "...", "conversation_id": "...", "model": "qwen-plus"}`；返回 `answer` + `sources`(含 MinIO 下载链接)
 - 对话（流式 SSE）`POST http://127.0.0.1:8000/api/v1/chat/stream`，同样 body；返回 `text/event-stream`，逐 token `data:`，末尾 `event: done`
 - 文档上传 `POST http://127.0.0.1:8000/api/v1/documents`（multipart）：字段 `file`（文件）+ `doc_type`（类型）+ `biz_tags`（可选 JSON）
 - 文档列表 `GET http://127.0.0.1:8000/api/v1/documents`：分页 + 按 `doc_type`/`status`/`only_active` 过滤
 - 文档详情/状态 `GET http://127.0.0.1:8000/api/v1/documents/{id}`：轮询入库进度
 - 知识库检索 `POST http://127.0.0.1:8000/api/v1/search`，body: `{"query": "...", "top_k": 5, "doc_type": null, "mode": "hybrid"}`（mode: hybrid/vector/keyword）
 - 切割配置 `GET/PUT http://127.0.0.1:8000/api/v1/chunk-configs[/{doc_type}]`：每类文档配切割策略(recursive/parent_child)与参数
+- 会话历史 `GET http://127.0.0.1:8000/api/v1/conversations`、`GET .../conversations/{id}/messages`：列会话 / 查消息
 
 ## 统一错误响应
 

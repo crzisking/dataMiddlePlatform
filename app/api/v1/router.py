@@ -8,12 +8,23 @@ include_router 把它们收进来，并给每个加上各自的路径前缀(pref
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import chat, chunk_configs, documents, health, meta, search
+from app.api.v1.endpoints import (
+    chat,
+    chunk_configs,
+    conversations,
+    documents,
+    health,
+    meta,
+    search,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])  # 健康检查，不加前缀
 api_router.include_router(meta.router, prefix="/meta", tags=["meta"])  # 元信息(模型列表等)
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])  # 对话
+api_router.include_router(
+    conversations.router, prefix="/conversations", tags=["chat"]
+)  # 会话历史
 api_router.include_router(documents.router, prefix="/documents", tags=["rag"])  # 文档上传/查询
 api_router.include_router(search.router, prefix="/search", tags=["rag"])  # 知识库检索
 api_router.include_router(
