@@ -122,6 +122,22 @@ async def list_schema_docs(session: AsyncSession) -> list[SchemaDoc]:
     return list(rows)
 
 
-# TODO(B4 schema-RAG)：按问题向量检索最相关的若干条语义记录
-#   （只在 enabled 且有 embedding 的行里找），复用向量检索逻辑。
-#   视图整理好、本架子灌进第一条数据后再实现。这里先预留位置。
+async def retrieve_schemas(
+    session: AsyncSession, question: str, *, top_k: int = 3
+) -> list[SchemaDoc]:
+    """schema-RAG：按问题向量检索最相关的若干条语义记录（视图/表）。
+
+    这是 TextToSQL 的"找对表"环节：把问题向量化，在 schema_docs 里按余弦距离找最近的几条，
+    只在 **enabled 且已向量化** 的行里找。返回的就是"该让模型照着写 SQL 的那几张视图/表"。
+    语义层为空（还没登记任何视图）时返回空列表——上层据此直接提示"未配置"，不会去碰业务库。
+    """
+    query_vec = (await embed_texts([question]))[0]
+    # cosine_distance 越小越相近，会用上 schema_docs 的 HNSW 索引
+    distance = SchemaDoc.embedding.cosine_distance(query_vec)
+    stmt = (
+        select(SchemaDoc)
+        .where(SchemaDoc.enabled.is_(True), SchemaDoc.embedding.isnot(None))
+        .order_by(distance)
+        .limit(top_k)
+    )
+    return list((await session.execute(stmt)).scalars().all())

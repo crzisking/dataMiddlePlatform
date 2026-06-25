@@ -16,6 +16,7 @@ from langchain_core.tools import tool
 from app.db.session import async_session_factory
 from app.services.agent.context import record_sources
 from app.services.rag.retrieval import hybrid_search
+from app.services.texttosql.query import answer_business_question
 
 
 @tool
@@ -50,8 +51,9 @@ async def query_business_database(question: str) -> str:
     数据都在 SQL Server。参数 question 是自然语言描述的数据问题，
     比如"上个月华东区订单量"。内部会把它转成只读 SQL 去查。
     """
-    # TODO(P5): 接入 TextToSQL(找相关表 → 生成 SQL → 校验 → 执行)
-    return "（业务数据查询尚未实现：P5 接入 TextToSQL）"
+    # 走 TextToSQL 完整链路：检索相关视图 → 生成 SQL → 安全护栏 → 只读执行 → 返回结果文本。
+    # 语义层还没登记任何视图时，链路会在第一步短路、返回"未配置"，不会去碰业务生产库。
+    return await answer_business_question(question)
 
 
 # 工具注册表：构建 Agent 时会把这一份列表交给它。新增工具记得加到这里。

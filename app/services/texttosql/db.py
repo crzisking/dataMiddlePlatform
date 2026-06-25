@@ -59,3 +59,22 @@ def ping() -> bool:
         return bool(row and row.get("ok") == 1)
     finally:
         conn.close()
+
+
+def run_query(sql: str, *, max_rows: int = 1000) -> list[dict]:
+    """执行一条**已通过安全护栏的**只读 SQL，返回结果行（每行一个字典）。
+
+    前置：sql 必须已经过 validate.py 校验+加固（仅 SELECT、白名单、带 TOP）。本函数不再判安全，
+    只负责执行。只读由账号权限兜底；查询超时由连接的 timeout 控制。
+    fetchmany(max_rows) 再兜一层行数上限，双保险防一次拉回过多数据。
+
+    同步函数（pymssql 阻塞），异步接口里要用 run_in_threadpool 包起来调。
+    ⚠️ 会真正查询业务生产库——只有语义层登记了视图、确有数据问题时才会走到这里。
+    """
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        return cursor.fetchmany(max_rows)
+    finally:
+        conn.close()
