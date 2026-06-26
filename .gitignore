@@ -23,3 +23,8 @@ logs/
 
 .claude/
 
+# 离线部署构建产物（wheel 包 + 导出的依赖清单），体积大、机器相关，不进 git
+wheels/
+requirements-offline.txt
+requirements-prod.txt
+

@@ -43,6 +43,7 @@ scripts\ops.ps1 scaffold <视图名>  # 拉视图/表字段 → 生成可粘进 
 - 首次建队列表（一次性）：`uv run procrastinate --app=app.workers.queue.app schema --apply`
 - 批量入库脚本也可直接调：`uv run python scripts/batch_ingest.py <文件夹> --doc-type <类型>`（默认类型「通用」）
 - 应用日志落 `logs/api.log` / `logs/worker.log`（轮转 10MB×5，已 gitignore）。
+- **生产/离线部署**：见 `运维手册.md` 第十三节「离线部署实录」。要点：prod 启动用 `python run_prod.py`（强制 SelectorEventLoop，不能直接 `uvicorn`）；Worker 用 `python -m procrastinate ...`；离线机用 `uv pip install --no-index --find-links wheels`（不是 `uv sync`）。已部署到测试服 `192.168.120.174`（老 CPU，numpy 降到 2.2.6）。
 
 ## 架构要点（跨文件才看得懂的部分）
 

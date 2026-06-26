@@ -21,6 +21,14 @@ _LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
 
 def setup_logging(name: str = "app") -> None:
     """配置全局日志。API 启动时 setup_logging('api')，Worker 进程 setup_logging('worker')。"""
+    # Windows 控制台默认 cp950，打中文日志会 UnicodeEncodeError（日志被接住不崩，但满屏报错）。
+    # 把 stdout/stderr 重设为 utf-8（编不出的字符用替代符）。重定向到管道时可能不可用，忽略即可。
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     level = logging.DEBUG if settings.app_debug else logging.INFO
     fmt = logging.Formatter(
         "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",

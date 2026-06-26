@@ -5,7 +5,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\ops.ps1 <command> [args]
 #
 # Commands:
-#   api                      Start API server (with reload, for dev)
+#   api                      Start API server (with reload, for DEV only)
+#   apiprod                  Start API server for PRODUCTION (no reload)
 #   worker                   Start background worker (parses & ingests uploads)
 #   migrate                  Upgrade DB schema to latest
 #   makemigration "<msg>"    Generate a migration script
@@ -25,6 +26,12 @@ switch ($cmd) {
         Write-Host "API: http://127.0.0.1:8000/docs"
         # --reload-exclude: don't watch logs/ (writing logs would be detected over and over)
         uv run uvicorn app.main:app --reload --reload-exclude "logs/*" --host 0.0.0.0 --port 8000
+    }
+    "apiprod" {
+        # Production start: NO --reload (reload is dev-only: watches files, wastes resources).
+        # Make sure .env has APP_DEBUG=false on the server.
+        Write-Host "API (prod) on 0.0.0.0:8000"
+        uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
     }
     "worker" {
         Write-Host "Worker started (Ctrl+C to stop)"
@@ -70,8 +77,9 @@ switch ($cmd) {
         catch { "SQL Server unreachable, check .env / MSSQL_*" }
     }
     default {
-        Write-Host "ops.ps1 commands: api | worker | migrate | makemigration | ingest | health"
+        Write-Host "ops.ps1 commands: api | apiprod | worker | migrate | makemigration | ingest | health"
         Write-Host "  api                     start API (dev, reload)"
+        Write-Host "  apiprod                 start API (production, no reload)"
         Write-Host "  worker                  start background worker"
         Write-Host "  migrate                 upgrade DB to latest"
         Write-Host '  makemigration "msg"     generate a migration'
