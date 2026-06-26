@@ -7,28 +7,41 @@
 
 加一个新能力 = 在这里写一个新函数 + 登记到底部的 TOOLS 列表，主流程不用改。
 
-- search_knowledge_base  → 已接入 RAG 检索(P4)
-- query_business_database → P5 接入 TextToSQL(仍是占位)
+- search_knowledge_base  → 已接入 RAG 混合检索(P4)
+- query_business_database → 已接入 TextToSQL 链路(P5)；语义层无视图时安全短路、不碰生产库
 """
 
 from langchain_core.tools import tool
 
+from app.core.logging import get_logger
 from app.db.session import async_session_factory
 from app.services.agent.context import record_sources
 from app.services.rag.retrieval import hybrid_search
 from app.services.texttosql.query import answer_business_question
 
+logger = get_logger(__name__)
+
 
 @tool
 async def search_knowledge_base(query: str) -> str:
-    """检索企业知识库，回答文档/规范/流程类问题。
+    """检索企业知识库，回答"文档/规范/流程/标准/代码含义"类问题。
 
-    适用：SOP、工艺文件、质量手册、设备手册、制度等"文档里写的知识"。
-    参数 query 是要检索的自然语言问题或关键词。
+    什么时候用：用户问某项作业怎么做、某流程/规范是什么、某代码代表什么、某制度如何规定——
+    答案在文档里（SOP、工艺文件、质量手册、设备手册、操作说明、ERP 代码表等）。
+    不要用在"查实际数据/统计数字"上（那是 query_business_database）。
+
+    参数 query：要检索的自然语言问题或关键词，尽量带上关键术语/编号（如"I2Q8 计价工时"）。
     """
-    # 工具在 worker/接口之外被 Agent 调用，没有现成的 session，自己开一个
-    async with async_session_factory() as session:
-        hits = await hybrid_search(session, query, top_k=5)
+    # 工具在 worker/接口之外被 Agent 调用，没有现成的 session，自己开一个。
+    # 兜底：检索若因 embedding/DB 临时异常抛错，返回可读提示而不是让整轮对话 500——
+    # 让模型能如实告知用户"查询失败"，而不是崩在半路。
+    try:
+        async with async_session_factory() as session:
+            hits = await hybrid_search(session, query, top_k=5)
+    except Exception:
+        logger.exception("知识库检索失败 query=%s", query)
+        return "知识库检索暂时失败，请稍后重试。"
+
     if not hits:
         return "知识库中没有找到相关内容。"
     # 记录来源(文档 id/名字)，供接口生成"引用来源 + 下载链接"
@@ -46,10 +59,12 @@ async def search_knowledge_base(query: str) -> str:
 
 @tool
 async def query_business_database(question: str) -> str:
-    """查询业务数据库，回答订单/产量/库存/质量等"数据统计"类问题。
+    """查询业务数据库，回答"实际数据/统计数字"类问题（订单/产量/库存/不良/工时等）。
 
-    数据都在 SQL Server。参数 question 是自然语言描述的数据问题，
-    比如"上个月华东区订单量"。内部会把它转成只读 SQL 去查。
+    什么时候用：用户问"多少、几件、合计、平均、排名、某时间段的实际数值"等需要从业务库算出来的数据。
+    不要用在"文档/规范/流程"类问题上（那是 search_knowledge_base）。
+
+    参数 question：自然语言描述的数据问题，如"上月各产线不良数"。内部会转成只读 SQL 查询。
     """
     # 走 TextToSQL 完整链路：检索相关视图 → 生成 SQL → 安全护栏 → 只读执行 → 返回结果文本。
     # 语义层还没登记任何视图时，链路会在第一步短路、返回"未配置"，不会去碰业务生产库。

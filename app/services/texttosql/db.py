@@ -78,3 +78,27 @@ def run_query(sql: str, *, max_rows: int = 1000) -> list[dict]:
         return cursor.fetchmany(max_rows)
     finally:
         conn.close()
+
+
+def list_columns(object_name: str) -> list[dict]:
+    """读取某个视图/表的字段清单（列名 + 类型），供 B2 脚手架自动生成语义层模板。
+
+    只查 `INFORMATION_SCHEMA.COLUMNS`——这是**只读的元数据查询**，不碰业务数据、不锁表，
+    负载极小。object_name 只取最后一段（去掉库/schema 前缀）来匹配 TABLE_NAME。
+    返回 [{"name", "type"}, ...]，按列在表里的顺序。查不到返回空列表。
+
+    同步函数（pymssql）。给脚本用，不在异步请求路径上。
+    """
+    name = object_name.replace("[", "").replace("]", "").split(".")[-1]
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        # 用参数化查询（%s）传表名，避免拼接；只读元数据
+        cursor.execute(
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+            (name,),
+        )
+        return [{"name": r["COLUMN_NAME"], "type": r["DATA_TYPE"]} for r in cursor.fetchall()]
+    finally:
+        conn.close()

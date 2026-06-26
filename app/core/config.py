@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_default_model: str = "deepseek-chat"
 
+    # —— 可暴露给前端的对话模型白名单（逗号分隔）——
+    # 从厂商官网/接口查到要用的模型名填这里，不写死在代码里：厂商 /models 会返回上百个
+    # 混杂模型(图像/语音/第三方等)，不能直接全暴露，所以由运维在这里挑出要用的几个。
+    # 改了无需动代码，重启生效。模型名→厂商的路由也按这两个列表自动建（见 llm/client.py）。
+    qwen_models: str = "qwen-plus,qwen-max,qwen-turbo"
+    deepseek_models: str = "deepseek-chat,deepseek-reasoner"
+
     # —— 向量化模型 ——
     embedding_model: str = "text-embedding-v3"
     embedding_dim: int = 1024
@@ -100,6 +107,16 @@ class Settings(BaseSettings):
         """把逗号分隔的白名单字符串，拆成一个扩展名集合（小写、去掉前面的点）。"""
         parts = self.upload_allowed_exts.split(",")
         return {e.strip().lower().lstrip(".") for e in parts if e.strip()}
+
+    @property
+    def qwen_model_list(self) -> list[str]:
+        """通义可暴露模型名列表（从逗号分隔的 qwen_models 解析）。"""
+        return [m.strip() for m in self.qwen_models.split(",") if m.strip()]
+
+    @property
+    def deepseek_model_list(self) -> list[str]:
+        """DeepSeek 可暴露模型名列表（从逗号分隔的 deepseek_models 解析）。"""
+        return [m.strip() for m in self.deepseek_models.split(",") if m.strip()]
 
     # 下面三个属性：把 .env 里散开的 host/port/user/... 拼成一整串连接字符串。
     # 为什么要三个：连库的不同工具，认的连接串格式不一样，各拼一个给它们。

@@ -12,6 +12,7 @@
 #   ingest <folder> [type]   Batch-ingest a folder of docs (type default: tongyong)
 #   health                   Check API + DB (PostgreSQL + SQL Server)
 #   mssqlcheck               Test SQL Server connection directly (no API needed)
+#   scaffold <view>          Pull a view/table's columns -> paste-ready register_views entry
 #   help                     Show this help
 
 $root = Split-Path $PSScriptRoot -Parent
@@ -50,6 +51,11 @@ switch ($cmd) {
     }
     "mssqlcheck" {
         uv run python scripts/check_mssql.py
+    }
+    "scaffold" {
+        $obj = $args[1]
+        if (-not $obj) { Write-Host "Usage: ops.ps1 scaffold <view-or-table-name>"; break }
+        uv run python scripts/scaffold_schema.py $obj
     }
     "health" {
         Write-Host "=== API ==="

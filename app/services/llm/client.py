@@ -29,17 +29,25 @@ _DEEPSEEK = Provider("deepseek", settings.deepseek_base_url, settings.deepseek_a
 # 模型名 -> 它属于哪家。这张表身兼两职：
 #   ① 它就是"可选模型白名单"，/meta/models 接口直接拿它返回给前端做下拉；
 #   ② 用户选了某个模型后，靠它查出该把请求发到哪家(地址+密钥)。
-# 一期写死在这里(受控、可控成本)；以后想让管理页自助增删模型，把数据源换成
-# 数据库即可，接口和用法都不用动。
-MODEL_REGISTRY: dict[str, Provider] = {
-    # 通义千问
-    "qwen-plus": _QWEN,
-    "qwen-max": _QWEN,
-    "qwen-turbo": _QWEN,
-    # DeepSeek
-    "deepseek-chat": _DEEPSEEK,
-    "deepseek-reasoner": _DEEPSEEK,
-}
+# 模型名**不写死在代码里**，而是来自 .env 的 QWEN_MODELS / DEEPSEEK_MODELS（运维从厂商
+# 官网/接口查到要用的几个填进去）。为什么不直接拉厂商的 /models 全列出来：通义 /models
+# 会返回上百个混杂模型(图像/语音/第三方等)，没法直接做下拉框，必须由运维挑选。
+# 加/减模型改 .env 即可，不动代码。
+
+
+def _build_registry() -> dict[str, Provider]:
+    """按 .env 配置的两个模型列表，构建"模型名 → 厂商"的路由表。"""
+    registry: dict[str, Provider] = {}
+    for name in settings.qwen_model_list:
+        registry[name] = _QWEN
+    for name in settings.deepseek_model_list:
+        registry[name] = _DEEPSEEK
+    # 兜底：保证默认模型一定可路由，避免 .env 漏配默认模型导致请求全挂。
+    registry.setdefault(settings.qwen_default_model, _QWEN)
+    return registry
+
+
+MODEL_REGISTRY: dict[str, Provider] = _build_registry()
 
 DEFAULT_MODEL = settings.qwen_default_model
 

@@ -11,6 +11,8 @@ router = APIRouter()
 async def models() -> dict:
     """返回可选模型列表和默认模型，给前端的"模型切换下拉框"用。
 
-    这样前端不用把模型名写死——后端加/减模型，前端自动跟着变。
+    模型清单来自 .env 的 `QWEN_MODELS` / `DEEPSEEK_MODELS` 配置（运维从厂商官网查到后挑选填入），
+    前端不写死、后端改 .env 即生效。不直接暴露厂商 /models 全量：那会返回上百个混杂模型(图像/
+    语音/第三方等)，没法直接做下拉框。
     """
     return {"default": DEFAULT_MODEL, "models": available_models()}
