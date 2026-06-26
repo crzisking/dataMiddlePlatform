@@ -15,6 +15,9 @@ import pymssql
 
 from app.core.config import settings
 from app.core.exceptions import ExternalServiceError
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _connect() -> "pymssql.Connection":
@@ -42,8 +45,10 @@ def _connect() -> "pymssql.Connection":
             tds_version=settings.mssql_tds_version,
         )
     except Exception as e:
-        # 把底层驱动的报错包装成统一的外部服务异常（502），并记下原因
-        raise ExternalServiceError(f"SQL Server 连接失败：{e}") from e
+        # 原始驱动报错含服务器 IP / 驱动内部细节，**只进日志、不回前端**；
+        # 对外只给一句干净提示。包装成统一的外部服务异常（502）。
+        logger.exception("SQL Server 连接失败")
+        raise ExternalServiceError("业务数据库连接失败") from e
 
 
 def ping() -> bool:

@@ -7,7 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 进度真相源（先读这两处）
 - **`项目选型/工作清单.md`** 是进度与待办的唯一真相源（含 P0–P9 阶段状态、技术债、待讨论事项）。开工前先读它确认当前位置。
 - `项目选型/` 下文档**按主题拆分**：`中台架构.md` / `RAG系统.md` / `TextToSQL.md` 各自独立。改文档时归到对应主题，**不要跨主题混写**。
-- 当前位置：P0–P4（RAG 问答）实质完成；**P5 TextToSQL 进行中**——SQL Server 已连通(A1)、语义层表 `schema_docs` 与登记机制(B1)就绪，待 DBA 整理首个业务视图。设计见 `TextToSQL.md` 第七节。
+- 当前位置：**P0–P4（RAG 问答）实质完成**（P4-④ 工具进度流式已决定不做）；**P5 TextToSQL 代码链路全就绪**（A1 连接 / B1 语义层 / B2 拉字段脚手架 / B4 检索 / C1 生成 / D1·D2 护栏执行 / E1 接 Agent 全部完成），但 **A2/B3 视图接入延期**——DBA 整理好视图后照 `TextToSQL.md` 第八节「操作手册」接入即可（语义层空时链路安全短路、不碰生产库）。**P6 Agent 编排调优**：提示词/工具说明/失败兜底/**迭代检索(agentic RAG)** 已打磨、验证通过。**P7 前端管理页进行中**（前端独立仓库 `D:\workSpace\tmbomweb`，已建 5 个管理页）。设计见 `TextToSQL.md` 第七/八节。
+
+## 前端管理页（P7，独立仓库）
+- 仓库：**`D:\workSpace\tmbomweb`**（Vue3+Vite+TS+Element Plus；门户挂载式，URL `?token=` 拿 JWT）。本仓库是后端。
+- 接我们后端：`.env` 的 `VITE_AI_API`（开发=本机:8000）+ 专用 axios `src/services/requestAI.ts`（**不带 token、适配裸 JSON**，与主后端 `request.ts` 分开）。接口封装在 `DataPlatformService.ts`。
+- 已建：文档管理 / 切割配置 / 检索测试 / 智能问答(流式) / 会话历史（`src/views/DataPlatform/`）。
+- 坑：流式用 fetch 手解析 SSE，**sse-starlette 是 `\r\n` 分隔**（按 `\r?\n` 解析）；文档类型下拉来自 `GET /meta/doc-types`。
+- 改前端**配置**（`.env*`/`env.d.ts`/`vite.config`）须先跟用户确认；纯页面可直接改。
 
 ## 常用命令
 全部经 uv。日常运维命令统一封装在 `scripts/ops.ps1`（PowerShell，纯英文，避免 cp950 乱码）。
@@ -28,7 +35,9 @@ scripts\ops.ps1 worker       # 启后台 worker（另开终端；上传解析入
 scripts\ops.ps1 migrate      # alembic upgrade head
 scripts\ops.ps1 makemigration "说明"   # 生成迁移脚本
 scripts\ops.ps1 ingest <文件夹> [类型]  # 批量入库（直接入库，不经队列/不需 worker）
-scripts\ops.ps1 health       # 自检 API + DB
+scripts\ops.ps1 health       # 自检 API + DB（PostgreSQL + SQL Server）
+scripts\ops.ps1 mssqlcheck   # 单独测 SQL Server 连通（不用启 API）
+scripts\ops.ps1 scaffold <视图名>  # 拉视图/表字段 → 生成可粘进 register_views.py 的配置（B2）
 ```
 
 - 首次建队列表（一次性）：`uv run procrastinate --app=app.workers.queue.app schema --apply`
@@ -89,6 +98,10 @@ scripts\ops.ps1 health       # 自检 API + DB
 
 ## 模型与外部服务
 - LLM：通义千问 / DeepSeek，均走 OpenAI 兼容接口（`services/llm/client.py` 按模型路由）；用户对话时自选模型，端点用白名单校验非法模型名返回 400。
+- **可选模型来自 `.env` 白名单**（`QWEN_MODELS` / `DEEPSEEK_MODELS`，逗号分隔），不写死在代码：厂商 `/models` 会返回上百个混杂模型（图像/语音/第三方），由运维挑出要用的几个填配置。`MODEL_REGISTRY` 按这两个列表动态构建（模型→厂商路由也据此）。当前：`qwen3.7-max` / `qwen3.7-plus` / `deepseek-v4-pro`（默认 `qwen3.7-plus`）。`/meta/models` 返回该清单。
+- **文档类型也是 `.env` 受控词表**（`DOC_TYPES`，逗号分隔），`GET /meta/doc-types` 返回，给前端上传/筛选下拉。加减类型改 `.env`、不动代码。
+- **Agent 迭代检索**：系统提示词要求知识类问题每轮重新检索、且结果不全就换关键词再查（agentic RAG），LangGraph 工具循环天然支持多轮。
+- **文档列表过滤**：`GET /documents` 支持 `doc_type`/`status`/`only_active`/`name`(文件名模糊)/`created_from`·`created_to`(时间范围)。
 - rerank 是通义 gte-rerank-v2，走 DashScope **原生** HTTP（非 OpenAI 兼容），默认关（`RERANK_ENABLED`）。
 - 业务库（TextToSQL，P5）：SQL Server 2008 只读生产库，已连通（`mssql_*` 已启用，`pymssql` + TDS 7.0）。语义层存我们自己的 PG（`schema_docs` 表，`services/texttosql/semantic_layer.py`），视图整理好用 `scripts/register_views.py` 登记。
 

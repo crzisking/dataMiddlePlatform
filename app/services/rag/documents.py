@@ -9,6 +9,7 @@
 
 import io
 import json
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -122,12 +123,16 @@ async def list_documents(
     doc_type: str | None = None,
     status: str | None = None,
     only_active: bool = True,
+    name: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[Document], int]:
     """分页列出文档，返回 (当前页的记录列表, 满足条件的总条数)。
 
     总条数单独查，是为了让前端能算总页数（光有当前页算不出来）。
+    name：按文件名模糊匹配（不区分大小写）。created_from/created_to：按创建时间范围过滤（含端点）。
     """
     # 把过滤条件收集到一个列表，下面查总数和查数据都复用同一组条件
     conditions = []
@@ -137,6 +142,13 @@ async def list_documents(
         conditions.append(Document.status == status)
     if only_active:
         conditions.append(Document.is_active.is_(True))  # 默认只看当前有效版本
+    if name:
+        # ilike：不区分大小写的模糊匹配；两边加 % 表示文件名里包含这段就算命中
+        conditions.append(Document.name.ilike(f"%{name}%"))
+    if created_from:
+        conditions.append(Document.created_at >= created_from)
+    if created_to:
+        conditions.append(Document.created_at <= created_to)
 
     # 先查满足条件的总条数
     total = await session.scalar(

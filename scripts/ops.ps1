@@ -23,7 +23,8 @@ $cmd = $args[0]
 switch ($cmd) {
     "api" {
         Write-Host "API: http://127.0.0.1:8000/docs"
-        uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+        # --reload-exclude: don't watch logs/ (writing logs would be detected over and over)
+        uv run uvicorn app.main:app --reload --reload-exclude "logs/*" --host 0.0.0.0 --port 8000
     }
     "worker" {
         Write-Host "Worker started (Ctrl+C to stop)"

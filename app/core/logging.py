@@ -47,6 +47,12 @@ def setup_logging(name: str = "app") -> None:
     root.addHandler(file_handler)
     root.setLevel(level)
 
+    # 压住过吵的第三方 logger。重点是 watchfiles：uvicorn --reload 用它监视文件变化，
+    # 而我们把日志写进 logs/api.log，它又盯着这个文件 → 写日志触发检测、检测又写日志，
+    # 自我循环刷屏(尤其 app_debug=True 时 root 是 DEBUG，全被打出来)。压到 WARNING 即可断环。
+    for noisy in ("watchfiles", "watchfiles.main"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     """取一个带名字的日志器。各文件用 get_logger(__name__)，

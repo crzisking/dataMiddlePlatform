@@ -320,7 +320,7 @@ uv run python scripts/register_views.py
 ### 步骤 4：验证能问答（首次会真查生产库，建议低峰）
 - 走问答接口问一个该视图能答的问题：
   ```
-  POST /api/v1/chat   body: {"message": "上月各产线不良数", "model": "qwen-plus"}
+  POST /api/v1/chat   body: {"message": "上月各产线不良数", "model": "qwen3.7-plus"}
   ```
 - 预期：Agent 调 `query_business_database` → 检索到你的视图 → 生成 SQL → 过护栏 → 只读查询 → 返回数据。
 - 查不到/报错时，日志 `logs/api.log` 里有原始 SQL 和原因，对照排查（见下）。

@@ -97,6 +97,23 @@ class Settings(BaseSettings):
     # 它们是老二进制格式，目前解析不了，放进来只会让用户传上去后失败。
     upload_allowed_exts: str = "pdf,docx,xlsx,txt,md"
 
+    # 文档类型受控词表（逗号分隔）：上传/筛选下拉的来源，由 /meta/doc-types 返回。
+    # 受控好处：分类统一、便于过滤/将来权限。改它只改 .env、不动代码（同模型白名单思路）。
+    doc_types: str = "通用,SOP,工艺,质量,设备手册,制度"
+
+    # —— 上线硬化（P8）——
+    # LLM / embedding 调用的重试与超时：通义/DeepSeek 偶发 429 限流 / 超时，openai SDK 会按
+    # max_retries 自动重试 + 指数退避（覆盖 B2 上游容错、C1 瞬时失败重试）。
+    llm_max_retries: int = 3
+    llm_timeout: int = 60  # 单次 LLM 请求超时（秒），防一个卡住的请求拖很久
+    # 同时处理的请求数上限：超过直接返回 503，保护本机和上游不被打爆。
+    # 目标并发 200~300，先留余量设 400，压测后再调（B1）。
+    max_concurrent_requests: int = 400
+    # DB 连接池：请求大多在等 LLM、用 DB 很短，池子不必太大但要够并发借用（C2）。
+    db_pool_size: int = 20
+    db_max_overflow: int = 20  # 池满后还能临时多开这么多，超出才排队
+    db_statement_timeout_ms: int = 30000  # 单条 SQL 超时（毫秒），防慢查询挂住连接
+
     @property
     def upload_max_bytes(self) -> int:
         """把"多少 MB"换算成"多少字节"，方便和文件实际大小比较。"""
@@ -107,6 +124,11 @@ class Settings(BaseSettings):
         """把逗号分隔的白名单字符串，拆成一个扩展名集合（小写、去掉前面的点）。"""
         parts = self.upload_allowed_exts.split(",")
         return {e.strip().lower().lstrip(".") for e in parts if e.strip()}
+
+    @property
+    def doc_type_list(self) -> list[str]:
+        """文档类型受控词表（从逗号分隔的 doc_types 解析）。"""
+        return [t.strip() for t in self.doc_types.split(",") if t.strip()]
 
     @property
     def qwen_model_list(self) -> list[str]:

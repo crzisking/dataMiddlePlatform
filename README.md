@@ -59,11 +59,11 @@ SQL Server 连通自检（不用启 API）：`uv run python scripts/check_mssql.
 - 接口文档 `http://127.0.0.1:8000/docs`
 - 健康检查 `http://127.0.0.1:8000/api/v1/health`
 - 数据库连通性 `http://127.0.0.1:8000/api/v1/health/db`（PostgreSQL）、`.../health/mssql`（SQL Server，未配则 skipped）
-- 可用模型 `http://127.0.0.1:8000/api/v1/meta/models`
-- 对话（一次性）`POST http://127.0.0.1:8000/api/v1/chat`，body: `{"message": "...", "model": "qwen-plus"}`；返回 `answer` + `conversation_id` + `sources`(含 MinIO 下载链接)。**会话 ID：不传则服务端新建并在返回里给出（=开新对话）；想接着聊就把上次返回的 `conversation_id` 传回来。`persist=true`（默认）时 `history` 字段被忽略，历史以库为准。**
+- 可用模型 `http://127.0.0.1:8000/api/v1/meta/models`、文档类型词表 `.../meta/doc-types`（均来自 .env 配置）
+- 对话（一次性）`POST http://127.0.0.1:8000/api/v1/chat`，body: `{"message": "...", "model": "qwen3.7-plus"}`（模型名取自 `/meta/models`）；返回 `answer` + `conversation_id` + `sources`(含 MinIO 下载链接)。**会话 ID：不传则服务端新建并在返回里给出（=开新对话）；想接着聊就把上次返回的 `conversation_id` 传回来。`persist=true`（默认）时 `history` 字段被忽略，历史以库为准。**
 - 对话（流式 SSE）`POST http://127.0.0.1:8000/api/v1/chat/stream`，同样 body；返回 `text/event-stream`：先 `event: meta`(JSON 带 `conversation_id`)，再逐 token `data:`，然后 `event: sources`(JSON)，末尾 `event: done`
 - 文档上传 `POST http://127.0.0.1:8000/api/v1/documents`（multipart）：字段 `file`（文件）+ `doc_type`（类型）+ `biz_tags`（可选 JSON）
-- 文档列表 `GET http://127.0.0.1:8000/api/v1/documents`：分页 + 按 `doc_type`/`status`/`only_active` 过滤
+- 文档列表 `GET http://127.0.0.1:8000/api/v1/documents`：分页 + 按 `doc_type`/`status`/`only_active`/`name`(文件名模糊)/`created_from`·`created_to`(时间范围) 过滤
 - 文档详情/状态 `GET http://127.0.0.1:8000/api/v1/documents/{id}`：轮询入库进度
 - 知识库检索 `POST http://127.0.0.1:8000/api/v1/search`，body: `{"query": "...", "top_k": 5, "doc_type": null, "mode": "hybrid"}`（mode: hybrid/vector/keyword）
 - 切割配置 `GET/PUT http://127.0.0.1:8000/api/v1/chunk-configs[/{doc_type}]`：每类文档配切割策略(recursive/parent_child)与参数
@@ -103,5 +103,7 @@ tests/                 冒烟测试（health / meta / 错误格式）
 ```
 
 > 进度：P0–P4（RAG 问答）实质完成——文档入库→混合检索→工具调用 Agent 多轮问答→带来源
-> 下载链接，全链路打通。P5 TextToSQL 进行中：SQL Server 已连通、语义层表与登记机制就绪，
-> 待 DBA 整理首个业务视图。详见 [项目选型/工作清单.md](项目选型/工作清单.md)。
+> 下载链接，全链路打通。**P5 TextToSQL 代码链路全就绪**（连接/语义层/拉字段/检索/生成/护栏/
+> 执行/接 Agent 全部完成），视图接入延期待 DBA。**P6** Agent 选工具/提示词/迭代检索已调优。
+> **P7 前端管理页进行中**（独立仓库 `D:\workSpace\tmbomweb`，已建 5 个管理页）。
+> 详见 [项目选型/工作清单.md](项目选型/工作清单.md)。

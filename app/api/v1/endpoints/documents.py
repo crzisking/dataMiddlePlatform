@@ -17,6 +17,7 @@ from app.services.rag.documents import (
     get_document,
     list_documents,
 )
+from app.services.storage.minio_client import presigned_get_url
 from app.workers.tasks import ingest_document
 
 router = APIRouter()
@@ -102,16 +103,22 @@ async def list_docs(
     doc_type: str | None = Query(None, description="按文档类型过滤"),
     status: str | None = Query(None, description="按状态过滤(pending/done/failed 等)"),
     only_active: bool = Query(True, description="仅看当前有效版本"),
+    name: str | None = Query(None, description="按文件名模糊过滤"),
+    created_from: datetime | None = Query(None, description="创建时间起(含)"),
+    created_to: datetime | None = Query(None, description="创建时间止(含)"),
     page: int = Query(1, ge=1),  # ge=1：页码至少为 1
     page_size: int = Query(20, ge=1, le=100),  # 每页 1~100 条
     session: AsyncSession = Depends(get_session),
 ) -> DocumentListOut:
-    """分页列出文档(给管理页用)。"""
+    """分页列出文档(给管理页用)。支持按类型/状态/文件名/创建时间范围过滤。"""
     rows, total = await list_documents(
         session,
         doc_type=doc_type,
         status=status,
         only_active=only_active,
+        name=name,
+        created_from=created_from,
+        created_to=created_to,
         limit=page_size,
         # 第 page 页要跳过前面 (page-1)*page_size 条
         offset=(page - 1) * page_size,
@@ -134,3 +141,25 @@ async def get_doc(
     if doc is None:
         raise NotFoundError(f"文档不存在 id={doc_id}")
     return DocumentOut.model_validate(doc)
+
+
+class DownloadUrlOut(BaseModel):
+    """单篇文档的下载链接。"""
+
+    download_url: str
+
+
+@router.get("/{doc_id}/download-url", response_model=DownloadUrlOut)
+async def get_doc_download_url(
+    doc_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> DownloadUrlOut:
+    """取某文档原件的下载链接。
+
+    MinIO 预签名 URL 限时 1 小时、不存库，所以每次用时现签（见 minio_client.presigned_get_url）。
+    管理页点"下载"时调它，拿到链接直接下原件。
+    """
+    doc = await get_document(session, doc_id)
+    if doc is None:
+        raise NotFoundError(f"文档不存在 id={doc_id}")
+    return DownloadUrlOut(download_url=presigned_get_url(doc.object_key))

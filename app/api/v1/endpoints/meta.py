@@ -1,7 +1,8 @@
-"""元信息接口：提供一些"配置类"数据给前端，目前是可选模型列表。"""
+"""元信息接口：提供一些"配置类"数据给前端（可选模型列表、文档类型词表等）。"""
 
 from fastapi import APIRouter
 
+from app.core.config import settings
 from app.services.llm.client import DEFAULT_MODEL, available_models
 
 router = APIRouter()
@@ -16,3 +17,12 @@ async def models() -> dict:
     语音/第三方等)，没法直接做下拉框。
     """
     return {"default": DEFAULT_MODEL, "models": available_models()}
+
+
+@router.get("/doc-types")
+async def doc_types() -> dict:
+    """返回文档类型受控词表，给前端上传/筛选的"文档类型下拉框"用。
+
+    清单来自 .env 的 `DOC_TYPES`（运维可改），前端不写死、后端加减类型前端自动跟着变。
+    """
+    return {"doc_types": settings.doc_type_list}

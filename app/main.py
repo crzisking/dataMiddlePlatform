@@ -16,6 +16,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
+from app.core.middleware import ConcurrencyLimitMiddleware, RequestLoggingMiddleware
 from app.workers.queue import app as task_app
 
 setup_logging("api")  # API 进程日志 → logs/api.log
@@ -53,8 +54,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 中间件注册顺序提醒：后 add 的在更外层。我们要让"请求日志"包住一切（含 503/CORS），
+# 所以最后 add 它。执行顺序(外→内)：请求日志 → 并发限流 → CORS → 业务。
+
 # CORS：浏览器有"跨域"限制——前端和后端域名/端口不同时，默认不让前端调后端。
-# 这个中间件放开跨域。一期不鉴权先全放开(*)；上线前(P8)要改成只允许前端的真实域名。
+# 这个中间件放开跨域。一期内网已决定不收敛(维持 *)；对外公网时再收敛到前端真实域名(见 P8)。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,6 +66,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 并发限流(P8 B1)：同时处理的请求数超过上限直接 503，保护本机和上游 LLM。
+app.add_middleware(ConcurrencyLimitMiddleware, limit=settings.max_concurrent_requests)
+
+# 请求日志(P8 D1)：每条请求记 方法/路径/状态/耗时。放最外层，503 也能记到。
+app.add_middleware(RequestLoggingMiddleware)
 
 # 注册统一错误处理：让所有报错都返回统一的 {code, message, detail} 格式。
 register_exception_handlers(app)

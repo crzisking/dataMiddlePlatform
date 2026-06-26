@@ -63,6 +63,10 @@ def _client_for(provider: Provider) -> AsyncOpenAI:
             # 密钥为空时填个占位串，让 client 能正常建出来；真正发请求时才会因鉴权失败报错。
             # 好处：没填密钥也能先把程序跑起来(骨架阶段方便)。
             api_key=provider.api_key or "missing-key",
+            # 上游容错(P8 B2/C1)：通义/DeepSeek 偶发 429 限流/超时，openai SDK 会自动重试 +
+            # 指数退避（embedding、一次性生成等走这个 client 的调用都受益）。
+            max_retries=settings.llm_max_retries,
+            timeout=settings.llm_timeout,
         )
     return _clients[provider.name]
 
@@ -102,6 +106,9 @@ def get_chat_model(model: str | None = None, temperature: float = 0.0) -> ChatOp
         base_url=provider.base_url,
         api_key=provider.api_key or "missing-key",
         temperature=temperature,
+        # 同 _client_for：让 Agent 的模型调用也带上重试 + 超时（P8 B2/C1）
+        max_retries=settings.llm_max_retries,
+        timeout=settings.llm_timeout,
     )
 
 

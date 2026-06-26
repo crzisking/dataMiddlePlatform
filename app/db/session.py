@@ -23,6 +23,14 @@ engine = create_async_engine(
     echo=settings.app_debug,
     # 取连接前先 ping 一下，自动剔除已经被数据库/网络断开的"死连接"，避免偶发报错
     pool_pre_ping=True,
+    # 连接池大小(P8 C2)：高并发下请求大多在等 LLM、用 DB 很短，池子够借用即可。
+    # pool_size 常驻连接数，max_overflow 池满后可临时多开的数；超出才排队等(pool_timeout)。
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=30,
+    # 给每条连接设单条 SQL 超时(毫秒)：防一条慢查询长时间挂住连接、拖垮并发。
+    # 这是 PostgreSQL 的 statement_timeout，由连接参数 -c 传入(psycopg 支持)。
+    connect_args={"options": f"-c statement_timeout={settings.db_statement_timeout_ms}"},
 )
 
 # 会话工厂：调用它(async_session_factory())就产出一个新的 session。
